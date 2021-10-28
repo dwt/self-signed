@@ -55,8 +55,7 @@ def parse_args(argv):
         help='Domain names to request. First domain is the common name.')
     return parser.parse_args(argv)
 
-# REFACT rename, no longer used to generate environment for subprocesses
-def environment(optional_config_path):
+def default_variables(optional_config_path):
     env = DEFAULTS.copy()
     env.update(read_defaults(optional_config_path))
     env.update(os.environ.copy())
@@ -71,10 +70,10 @@ def ensure_text(maybe_text):
 def main(argv):
     arguments = parse_args(argv)
     variables = dict(
-        environment(arguments.config_path),
+        default_variables(arguments.config_path),
         **sans_from_domains(arguments.domains)
     )
-    with temporary_openssl_config(CSR_CREATION_CONFIGURATION_TEMPLATE, variables) as path_to_config:
+    with temporary_openssl_config(csr_creation_configuration_template(), variables) as path_to_config:
         batch_params = ['-batch'] if arguments.batch else []
         csr_out_params = arguments.csr_out and ['-out', arguments.csr_out] or []
         run([
@@ -86,7 +85,7 @@ def main(argv):
             ] + batch_params + csr_out_params,
         )
     if arguments.signed_out:
-        with temporary_openssl_config(CSR_SIGN_CONFIGURATION_TEMPLATE, variables) as path_to_config:
+        with temporary_openssl_config(csr_sign_configuration_template(), variables) as path_to_config:
             signed_out_params = arguments.signed_out and ['-out', arguments.signed_out] or []
             run([
                     'openssl', 'x509', 
@@ -108,77 +107,81 @@ def read_defaults(path):
     exec(path.read_text(), None, default_values)
     return default_values
 
-CSR_CREATION_CONFIGURATION_TEMPLATE = """
-HOME			= .
-RANDFILE		= $HOME/.rnd
+def csr_creation_configuration_template():
+    return  dedent("""
+        HOME			= .
+        RANDFILE		= $HOME/.rnd
 
-[ req ]
-default_bits		= 2048
-default_md		= sha256
-default_keyfile 	= privkey.pem
-distinguished_name	= distinguished_name
-# The extentions to add to the self signed cert
-x509_extensions	= v3_ca
-req_extensions      = v3_ca
-extensions          = v3_ca
-string_mask = utf8only
+        [ req ]
+        default_bits		= 2048
+        default_md		= sha256
+        default_keyfile 	= privkey.pem
+        distinguished_name	= distinguished_name
+        # The extentions to add to the self signed cert
+        x509_extensions	= v3_ca
+        req_extensions      = v3_ca
+        extensions          = v3_ca
+        string_mask = utf8only
 
-[ v3_ca ]
-subjectKeyIdentifier=hash
-authorityKeyIdentifier=keyid:always,issuer
-basicConstraints = CA:true
+        [ v3_ca ]
+        subjectKeyIdentifier=hash
+        authorityKeyIdentifier=keyid:always,issuer
+        basicConstraints = CA:true
 
-[ distinguished_name ]
-countryName			= Country Name (2 letter code)
-countryName_default		= $REQ_COUNTRY
-countryName_min			= 2
-countryName_max			= 2
+        [ distinguished_name ]
+        countryName			= Country Name (2 letter code)
+        countryName_default		= $REQ_COUNTRY
+        countryName_min			= 2
+        countryName_max			= 2
 
-stateOrProvinceName		= State or Province Name (full name)
-stateOrProvinceName_default	= $REQ_PROVINCE
+        stateOrProvinceName		= State or Province Name (full name)
+        stateOrProvinceName_default	= $REQ_PROVINCE
 
-localityName			= Locality Name (eg, city)
-localityName_default		= $REQ_CITY
+        localityName			= Locality Name (eg, city)
+        localityName_default		= $REQ_CITY
 
-0.organizationName		= Organization Name (eg, company)
-0.organizationName_default	= $REQ_ORG
+        0.organizationName		= Organization Name (eg, company)
+        0.organizationName_default	= $REQ_ORG
 
-organizationalUnitName		= Organizational Unit Name (eg, section)
-organizationalUnitName_default	= $REQ_OU
+        organizationalUnitName		= Organizational Unit Name (eg, section)
+        organizationalUnitName_default	= $REQ_OU
 
-commonName			= Common Name (eg, your name or your server\'s hostname)
-commonName_max			= 64
+        commonName			= Common Name (eg, your name or your server\'s hostname)
+        commonName_max			= 64
 
-emailAddress			= Email Address
-emailAddress_max		= 64
-emailAddress_default	= $REQ_EMAIL
-commonName_default		= $COMMON_NAME
+        emailAddress			= Email Address
+        emailAddress_max		= 64
+        emailAddress_default	= $REQ_EMAIL
+        commonName_default		= $COMMON_NAME
 
-[SAN]
-subjectAltName			= $SUBJECT_ALT_NAMES
-"""
+        [SAN]
+        subjectAltName			= $SUBJECT_ALT_NAMES
+        """
+    )
 
-CSR_SIGN_CONFIGURATION_TEMPLATE = """
-default_bits		= 2048
-default_md			= sha256
+def csr_sign_configuration_template():
+    return dedent("""
+        default_bits		= 2048
+        default_md			= sha256
 
-distinguished_name	= distinguished_name
-x509_extensions		= SAN
-req_extensions		= SAN
-extensions			= SAN
-prompt				= no
-    
-[ distinguished_name ]
-countryName			= $REQ_COUNTRY
-stateOrProvinceName	= $REQ_PROVINCE
-localityName		= $REQ_CITY
-organizationName	= $REQ_ORG
-commonName_default	= $COMMON_NAME
+        distinguished_name	= distinguished_name
+        x509_extensions		= SAN
+        req_extensions		= SAN
+        extensions			= SAN
+        prompt				= no
+            
+        [ distinguished_name ]
+        countryName			= $REQ_COUNTRY
+        stateOrProvinceName	= $REQ_PROVINCE
+        localityName		= $REQ_CITY
+        organizationName	= $REQ_ORG
+        commonName_default	= $COMMON_NAME
 
-[SAN]
-subjectAltName		= $SUBJECT_ALT_NAMES
-basicConstraints	= critical,CA:TRUE,pathlen:1
-"""
+        [SAN]
+        subjectAltName		= $SUBJECT_ALT_NAMES
+        basicConstraints	= critical,CA:TRUE,pathlen:1
+        """
+    )
 
 @contextmanager
 def temporary_openssl_config(template, variables):
@@ -233,7 +236,7 @@ def test_overwrite_dotennv_with_environment_variables(tmp_path, monkeypatch):
         context.chdir(tmp_path)
         context.setenv('REQ_EMAIL', 'fnord@example.com')
         
-        defaults = environment('.env')
+        defaults = default_variables('.env')
         assert defaults['REQ_EMAIL'] == 'fnord@example.com'
 
 def test_hardcode_environment_config_into_openssl_config(tmp_path):
@@ -249,15 +252,15 @@ def test_prepare_domain_names():
 
 def test_check_certificate_sign_request_config(tmp_path):
     variables = dict(
-        environment('.env'),
+        default_variables('.env'),
         REQ_COUNTRY='fnord',
         **sans_from_domains(['fnord.example.com', 'fnord.example.org'])
     )
-    with temporary_openssl_config(CSR_CREATION_CONFIGURATION_TEMPLATE, variables) as path_to_config:
+    with temporary_openssl_config(csr_creation_configuration_template(), variables) as path_to_config:
         config = Path(path_to_config).read_text()
         assert 'countryName_default		= fnord' in config
         assert 'subjectAltName			= DNS:fnord.example.com,DNS:fnord.example.org'
-    with temporary_openssl_config(CSR_SIGN_CONFIGURATION_TEMPLATE, variables) as path_to_config:
+    with temporary_openssl_config(csr_sign_configuration_template(), variables) as path_to_config:
         config = Path(path_to_config).read_text()
         assert 'countryName			= fnord' in config
         assert 'subjectAltName		= DNS:fnord.example.com,DNS:fnord.example.org' in config
