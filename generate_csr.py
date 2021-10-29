@@ -35,25 +35,34 @@ DEFAULTS = dict(
 
 def parse_args(argv):
     parser = argparse.ArgumentParser(
-        description='Generate and optionaly sign SSL CSRs with Subject Alternative Names')
-    parser.add_argument('--batch', dest='batch', action='store_true',
-        default=False, help='Batch mode, supress interaction and go with defaults.')
-    parser.add_argument('--key', dest='key', metavar='PRIVATE_KEY_FILE',
+        description="Generate and optionaly sign SSL CSRs with Subject Alternative Names")
+    
+    
+    self_sign_arguments = parser.add_argument_group("Signing", "Create self signed certificates")
+    self_sign_arguments.add_argument('--config', dest='config_path', default='.env', 
+        help="""Optional path to .env like file with default values for REQ_COUNTRY,
+            REQ_PROVINCE, REQ_CITY, REQ_ORG, REQ_OU, REQ_EMAIL. Is parsed as python code.
+            Defaults can also be set by environment variables of these names.
+            Default: .env
+        """)
+    self_sign_arguments.add_argument('--batch', dest='batch', action='store_true', default=False,
+        help='Batch mode, supress interaction and go with defaults.')
+    self_sign_arguments.add_argument('--key', dest='key', metavar='PRIVATE_KEY_FILE',
         help="""Path to a private key file to generate a CSR for.
             To generate a key, consider calling 'openssl genrsa -out private.key 4096'
         """)
-    parser.add_argument('--csr-out', dest='csr_out', default=None,
-        help='Path to file to save csr in')
-    parser.add_argument('--signed-out', dest='signed_out', default=None,
-        help='Path to file to save signed csr in')
-    parser.add_argument('--config', dest='config_path', default='.env', 
-        help='Optional path to .env like file with default values for REQ_COUNTRY,'
-            ' REQ_PROVINCE, REQ_CITY, REQ_ORG, REQ_OU, REQ_EMAIL. Is parsed as python code.'
-            ' Defaults can also be set by environment variables of these names.'
-            ' Default: .env')
-    parser.add_argument('domains', metavar='DOMAIN', nargs='+',
-        help='Domain names to request. First domain is the common name.')
-    return parser.parse_args(argv)
+    self_sign_arguments.add_argument('--csr-out', dest='csr_out', default=None,
+        help="Path to file to save csr in")
+    self_sign_arguments.add_argument('--certificate-out', dest='certificate_out', default=None,
+        help="Path to file to save signed csr in")
+    self_sign_arguments.add_argument('--domains', dest='domains', metavar='DOMAIN', nargs='+',
+        help="Domain names to request. First domain is the common name.")
+    
+    introspect_arguments = parser.add_argument_group("Introspection", "Decode created files")
+    introspect_arguments.add_argument('--introspect', dest='introspect_path', type=Path, default=None,
+        help="Path to a private key, certificate signing request or certificate. If given, ignores all other arguments.")
+
+    return parser.parse_args(argv[1:])
 
 def default_variables(optional_config_path):
     env = DEFAULTS.copy()
@@ -69,6 +78,11 @@ def ensure_text(maybe_text):
 
 def main(argv):
     arguments = parse_args(argv)
+    
+    if arguments.introspect_path:
+        print(introspect(arguments.introspect_path, verbose=arguments.verbose))
+        return
+    
     variables = dict(
         default_variables(arguments.config_path),
         **sans_from_domains(arguments.domains)
@@ -84,10 +98,9 @@ def main(argv):
                 '-config', path_to_config,
             ] + batch_params + csr_out_params,
         )
-    if arguments.signed_out:
+    if arguments.certificate_out:
         with temporary_openssl_config(csr_sign_configuration_template(), variables) as path_to_config:
-            signed_out_params = arguments.signed_out and ['-out', arguments.signed_out] or []
-            run([
+            certificate_out_params = arguments.certificate_out and ['-out', arguments.certificate_out] or []
                     'openssl', 'x509', 
                     '-req', '-sha256', '-days', '365', 
                     '-extfile', path_to_config,
@@ -201,6 +214,31 @@ def sans_from_domains(domains):
         COMMON_NAME=ensure_text(domains[0]),
         SUBJECT_ALT_NAMES=','.join('DNS:%s' % ensure_text(domain) for domain in domains)
     )
+
+def introspect(path, verbose=True):
+    text = path.read_text()
+    command = []
+    if 'BEGIN RSA PRIVATE KEY' in text:
+        command = ['openssl', 'rsa', '-in', path.as_posix(), '-noout', '-text']
+    elif 'BEGIN CERTIFICATE REQUEST' in text:
+        command = ['openssl', 'req', '-in', path.as_posix(), '-noout', '-text']
+    elif 'BEGIN CERTIFICATE' in text:
+        command = ['openssl', 'x509', '-in', path.as_posix(), '-noout', '-text']
+    else:
+        assert False, 'Unknown filetype, only support rsa private key, certificate request or certificate'
+    
+    return verbose_run(command, capture_output=True, verbose=verbose)
+
+def verbose_run(command, capture_output=False, verbose=False):
+    if verbose:
+        print('#', ' '.join(command), flush=True)
+    
+    result = run(command, capture_output=capture_output)
+    if not capture_output:
+        return result
+    
+    return result.stdout.decode('utf8')
+
 if __name__ == '__main__':
     main(sys.argv)
 
@@ -274,26 +312,27 @@ def test_create_self_signed_certificate(tmp_path, monkeypatch):
         run(['openssl', 'genrsa', '-out', key_path.as_posix(), '4096'])
         assert key_path.is_file()
         assert 'BEGIN RSA PRIVATE KEY' in key_path.read_text()
-        assert b'Private-Key: (4096 bit)' in run('openssl rsa -in private.key -noout -text'.split(), capture_output=True).stdout
+        assert 'Private-Key: (4096 bit)' in introspect(key_path)
         csr_path = tmp_path / 'certificate_signing_request.csr'
         certificate_path = tmp_path / 'certificate.pem'
-        main([
+        main([ 'tool-name',
             '--batch', '--key', key_path.as_posix(), '--csr-out', csr_path.as_posix(), 
-            '--signed-out', certificate_path.as_posix(), 'fnord.example.com', 'fnord.example.org'
+            '--certificate-out', certificate_path.as_posix(),
+            '--domains', 'fnord.example.com', 'fnord.example.org'
         ])
         
         assert csr_path.is_file()
         assert 'BEGIN CERTIFICATE REQUEST' in csr_path.read_text()
-        csr_introspection = run('openssl req -in certificate_signing_request.csr -noout -text'.split(), capture_output=True).stdout
-        assert b'Subject: C=DE, ST=Berlin, L=Berlin, O=Haeckertools, OU=DevOps, CN=fnord.example.com/emailAddress=haecker@example.com' in csr_introspection
-        assert b'X509v3 Subject Alternative Name: \n                DNS:fnord.example.com, DNS:fnord.example.org' in csr_introspection
+        csr_introspection = introspect(csr_path)
+        assert 'Subject: C=DE, ST=Berlin, L=Berlin, O=Häckertools, OU=DevOps, CN=fnord.example.com/emailAddress=haecker@example.com' in csr_introspection
+        assert 'X509v3 Subject Alternative Name: \n                DNS:fnord.example.com, DNS:fnord.example.org' in csr_introspection
         
         assert certificate_path.is_file()
         assert 'BEGIN CERTIFICATE' in certificate_path.read_text()
-        certificate_introspection = run('openssl x509 -in certificate.pem -noout -text'.split(), capture_output=True).stdout
-        assert b'Signature Algorithm: sha256WithRSAEncryption' in certificate_introspection
-        assert b'Issuer: C=DE, ST=Berlin, L=Berlin, O=Haeckertools, OU=DevOps, CN=fnord.example.com/emailAddress=haecker@example.com' in certificate_introspection
-        assert b'Subject: C=DE, ST=Berlin, L=Berlin, O=Haeckertools, OU=DevOps, CN=fnord.example.com/emailAddress=haecker@example.com' in certificate_introspection
-        assert b'X509v3 extensions:\n            X509v3 Subject Alternative Name: \n                DNS:fnord.example.com, DNS:fnord.example.org' in certificate_introspection
-        assert b'X509v3 Basic Constraints: critical\n                CA:TRUE, pathlen:1' in certificate_introspection
+        certificate_introspection = introspect(certificate_path)
+        assert 'Signature Algorithm: sha256WithRSAEncryption' in certificate_introspection
+        assert 'Issuer: C=DE, ST=Berlin, L=Berlin, O=Haeckertools, OU=DevOps, CN=fnord.example.com/emailAddress=haecker@example.com' in certificate_introspection
+        assert 'Subject: C=DE, ST=Berlin, L=Berlin, O=Haeckertools, OU=DevOps, CN=fnord.example.com/emailAddress=haecker@example.com' in certificate_introspection
+        assert 'X509v3 extensions:\n            X509v3 Subject Alternative Name: \n                DNS:fnord.example.com, DNS:fnord.example.org' in certificate_introspection
+        assert 'X509v3 Basic Constraints: critical\n                CA:TRUE, pathlen:1' in certificate_introspection
         
