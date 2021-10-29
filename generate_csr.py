@@ -37,6 +37,8 @@ def parse_args(argv):
     parser = argparse.ArgumentParser(
         description="Generate and optionaly sign SSL CSRs with Subject Alternative Names")
     
+    parser.add_argument('-v', '--verbose', dest='verbose', action='store_true', default=False,
+        help="Prints openssl commands used.")
     
     self_sign_arguments = parser.add_argument_group("Signing", "Create self signed certificates")
     self_sign_arguments.add_argument('--config', dest='config_path', default='.env', 
@@ -90,24 +92,27 @@ def main(argv):
     with temporary_openssl_config(csr_creation_configuration_template(), variables) as path_to_config:
         batch_params = ['-batch'] if arguments.batch else []
         csr_out_params = arguments.csr_out and ['-out', arguments.csr_out] or []
-        run([
+        verbose_run([
                 'openssl', 'req',
                 '-new', '-sha256', #'-x509',
                 '-key', arguments.key,
                 '-reqexts', 'SAN',
                 '-config', path_to_config,
             ] + batch_params + csr_out_params,
+            verbose=arguments.verbose,
         )
     if arguments.certificate_out:
         with temporary_openssl_config(csr_sign_configuration_template(), variables) as path_to_config:
             certificate_out_params = arguments.certificate_out and ['-out', arguments.certificate_out] or []
+            verbose_run([
                     'openssl', 'x509', 
                     '-req', '-sha256', '-days', '365', 
                     '-extfile', path_to_config,
                     # '-addext', 'basicConstraints=critical,CA:TRUE,pathlen:1',
                     '-in', arguments.csr_out,
                     '-signkey', arguments.key,
-                ] + signed_out_params,
+                ] + certificate_out_params,
+                verbose=arguments.verbose,
             )
 
 def read_defaults(path):
