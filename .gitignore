@@ -1,6 +1,11 @@
-.env
+# generated files
 *.egg-info
+build
+dist
+.tox
 
+# dev helper files
+.env
 private.key
 request.pem
 certificate.pem
