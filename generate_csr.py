@@ -108,7 +108,6 @@ def main(argv):
                     'openssl', 'x509', 
                     '-req', '-sha256', '-days', '365', 
                     '-extfile', path_to_config,
-                    # '-addext', 'basicConstraints=critical,CA:TRUE,pathlen:1',
                     '-in', arguments.csr_out,
                     '-signkey', arguments.key,
                 ] + certificate_out_params,
@@ -188,7 +187,7 @@ def csr_sign_configuration_template():
         req_extensions		= SAN
         extensions			= SAN
         prompt				= no
-            
+        
         [ distinguished_name ]
         countryName			= $REQ_COUNTRY
         stateOrProvinceName	= $REQ_PROVINCE
@@ -227,9 +226,9 @@ def introspect(path, verbose=True):
     if 'BEGIN RSA PRIVATE KEY' in text:
         command = ['openssl', 'rsa', '-in', path.as_posix(), '-noout', '-text']
     elif 'BEGIN CERTIFICATE REQUEST' in text:
-        command = ['openssl', 'req', '-in', path.as_posix(), '-noout', '-text']
+        command = ['openssl', 'req', '-in', path.as_posix(), '-noout', '-text', '-nameopt', 'oneline,-esc_msb']
     elif 'BEGIN CERTIFICATE' in text:
-        command = ['openssl', 'x509', '-in', path.as_posix(), '-noout', '-text']
+        command = ['openssl', 'x509', '-in', path.as_posix(), '-noout', '-text', '-nameopt', 'oneline,-esc_msb']
     else:
         assert False, 'Unknown filetype, only support rsa private key, certificate request or certificate'
     
@@ -330,15 +329,15 @@ def test_create_self_signed_certificate(tmp_path, monkeypatch):
         assert csr_path.is_file()
         assert 'BEGIN CERTIFICATE REQUEST' in csr_path.read_text()
         csr_introspection = introspect(csr_path)
-        assert 'Subject: C=DE, ST=Berlin, L=Berlin, O=Häckertools, OU=DevOps, CN=fnord.example.com/emailAddress=haecker@example.com' in csr_introspection
+        assert 'Subject: C = DE, ST = Berlin, L = Berlin, O = Häckertools, OU = DevOps, CN = fnord.example.com, emailAddress = haecker@example.com' in csr_introspection
         assert 'X509v3 Subject Alternative Name: \n                DNS:fnord.example.com, DNS:fnord.example.org' in csr_introspection
         
         assert certificate_path.is_file()
         assert 'BEGIN CERTIFICATE' in certificate_path.read_text()
         certificate_introspection = introspect(certificate_path)
         assert 'Signature Algorithm: sha256WithRSAEncryption' in certificate_introspection
-        assert 'Issuer: C=DE, ST=Berlin, L=Berlin, O=Haeckertools, OU=DevOps, CN=fnord.example.com/emailAddress=haecker@example.com' in certificate_introspection
-        assert 'Subject: C=DE, ST=Berlin, L=Berlin, O=Haeckertools, OU=DevOps, CN=fnord.example.com/emailAddress=haecker@example.com' in certificate_introspection
+        assert 'Issuer: C = DE, ST = Berlin, L = Berlin, O = Häckertools, OU = DevOps, CN = fnord.example.com, emailAddress = haecker@example.com' in certificate_introspection
+        assert 'Subject: C = DE, ST = Berlin, L = Berlin, O = Häckertools, OU = DevOps, CN = fnord.example.com, emailAddress = haecker@example.com' in certificate_introspection
         assert 'X509v3 extensions:\n            X509v3 Subject Alternative Name: \n                DNS:fnord.example.com, DNS:fnord.example.org' in certificate_introspection
         assert 'X509v3 Basic Constraints: critical\n                CA:TRUE, pathlen:1' in certificate_introspection
         
