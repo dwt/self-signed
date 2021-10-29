@@ -14,7 +14,7 @@ import codecs
 import sys
 from textwrap import dedent
 from string import Template
-from subprocess import check_call, check_output, run
+from subprocess import check_call, check_output, run, PIPE
 from tempfile import NamedTemporaryFile
 from pathlib import Path
 from contextlib import contextmanager
@@ -68,6 +68,7 @@ def parse_args(argv=sys.argv):
 def default_variables(optional_config_path):
     env = DEFAULTS.copy()
     env.update(read_defaults(optional_config_path))
+    env.update(dict(HOME=Path.home().as_posix()))
     env.update(os.environ.copy())
     return env
 
@@ -236,13 +237,18 @@ def introspect(path, verbose=True):
 
 def verbose_run(command, capture_output=False, verbose=False):
     if verbose:
-        print('#', ' '.join(command), flush=True)
+        print('#', ' '.join(command), file=sys.stderr, flush=True)
     
-    result = run(command, capture_output=capture_output)
-    if not capture_output:
-        return result
+    # capture_output is only supported from python 3.7
+    backwards_compatible_capture_output_args = {}
+    if capture_output:
+        backwards_compatible_capture_output_args = dict(stdout=PIPE, stderr=PIPE)
     
-    return result.stdout.decode('utf8')
+    result = run(command, **backwards_compatible_capture_output_args)
+    if capture_output:
+        return result.stdout.decode('utf8')
+    
+    return ''
 
 if __name__ == '__main__':
     main()
