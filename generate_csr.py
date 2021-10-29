@@ -28,7 +28,7 @@ DEFAULTS = dict(
     REQ_COUNTRY='DE',
     REQ_PROVINCE='Berlin',
     REQ_CITY='Berlin',
-    REQ_ORG='Haeckertools',
+    REQ_ORG='Häckertools',
     REQ_OU='DevOps',
     REQ_EMAIL='haecker@example.com',
 )
@@ -140,6 +140,7 @@ def csr_creation_configuration_template():
         req_extensions      = v3_ca
         extensions          = v3_ca
         string_mask = utf8only
+        utf8 = yes
 
         [ v3_ca ]
         subjectKeyIdentifier=hash
