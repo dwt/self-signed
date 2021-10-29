@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 # encoding: utf-8
-# Tested with Pythons 2.7 and 3.4
 
 # Licensed under the BSD 2-Clause License <https://opensource.org/licenses/BSD-2-Clause>
 # Authors:
@@ -33,7 +32,7 @@ DEFAULTS = dict(
     REQ_EMAIL='haecker@example.com',
 )
 
-def parse_args(argv):
+def parse_args(argv=sys.argv):
     parser = argparse.ArgumentParser(
         description="Generate and optionaly sign SSL CSRs with Subject Alternative Names")
     
@@ -78,7 +77,7 @@ def ensure_text(maybe_text):
         return maybe_text
     return maybe_text.decode('utf-8')
 
-def main(argv):
+def main(argv=sys.argv):
     arguments = parse_args(argv)
     
     if arguments.introspect_path:
@@ -246,7 +245,7 @@ def verbose_run(command, capture_output=False, verbose=False):
     return result.stdout.decode('utf8')
 
 if __name__ == '__main__':
-    main(sys.argv)
+    main()
 
 ## Unit Tests
 
