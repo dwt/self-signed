@@ -110,6 +110,7 @@ def main(argv):
                     '-extfile', path_to_config,
                     '-in', arguments.csr_out,
                     '-signkey', arguments.key,
+                     '-nameopt', 'oneline,-esc_msb',
                 ] + certificate_out_params,
                 verbose=arguments.verbose,
             )
