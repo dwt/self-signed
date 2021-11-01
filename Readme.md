@@ -1,6 +1,6 @@
-# self-signed: Create self signed certificates with multiple Domain Names (SANs) with style
+# self-signed: Create self certificate request and signed certificates with multiple Domain Names (SANs) with style
 
-self-signed is a python tool to make it easy to generate self signed certificates with multiple domain names (SAN - Subject Alternative Names).
+self-signed is a python tool to make it easy to generate certificate reqeusts and self signed certificates with multiple domain names (SAN - Subject Alternative Names).
 
 While it is relatively simple to generate a self signed certificate for a single domain name with the openssl shell, creating one for multiple domain names is _signifficantly_ harder. You have to create / change configuration files for that, something I always forgot and had to look up. Doubly so, if you want to support utf8 names in there. Also, the `openssl` shell is just not really a nice and focused experience to create self signed certificates.
 
