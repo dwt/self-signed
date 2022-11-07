@@ -52,6 +52,8 @@ def parse_args(argv=sys.argv):
         help="""Path to a private key file to generate a CSR for.
             To generate a key, consider calling 'openssl genrsa -out private.key 4096'
         """)
+    # FIXME if this is left out, certificate out will error out, either save to temporary location
+    # or enforce it if --certificate out is given. Current default ist to write it to stdout
     self_sign_arguments.add_argument('--csr-out', dest='csr_out', default=None,
         help="Path to file to save csr in")
     self_sign_arguments.add_argument('--certificate-out', dest='certificate_out', default=None,
@@ -224,6 +226,7 @@ def sans_from_domains(domains):
 def introspect(path, verbose=True):
     text = path.read_text()
     command = []
+    # REFACT consider supporting encrypted private keys too. Detect with: BEGIN ENCRYPTED PRIVATE KEY
     if 'BEGIN RSA PRIVATE KEY' in text:
         command = ['openssl', 'rsa', '-in', path.as_posix(), '-noout', '-text']
     elif 'BEGIN CERTIFICATE REQUEST' in text:
