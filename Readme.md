@@ -11,6 +11,7 @@ That is where this package helps, one command, nice `--help` output and a job qu
 - It allows you to create a certificate request with multiple SANs
 - It allows you to optionally self sign that request
 - Sets the right defaults to create certificate signing requests and certificates with utf8 fields
+- Helps you to inspect the generated files with the `--introspect` option
 
 # Demo time
 
